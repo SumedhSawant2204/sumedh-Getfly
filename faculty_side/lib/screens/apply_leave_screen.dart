@@ -1,7 +1,13 @@
 // apply_leave_screen.dart
 import 'package:flutter/material.dart';
+import '../models/faculty.dart' hide LeaveType;
 import '../widgets/app_header.dart';
 import '../widgets/side_drawer.dart';
+import '../services/api_services.dart';
+import '../models/faculty.dart' hide LeaveType;
+import 'package:intl/intl.dart';
+import '../models/leave_type.dart';
+import '../models/alternate_models.dart' hide AlternatePerson; // Make sure this file exports AlternatePerson
 
 class ApplyLeaveScreen extends StatefulWidget {
   const ApplyLeaveScreen({super.key});
@@ -11,10 +17,16 @@ class ApplyLeaveScreen extends StatefulWidget {
 }
 
 class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
+  final String apiToken =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjMyMDMsInVzZXJfdHlwZSI6MiwicHJpdmlsZWdlIjpudWxsLCJpYXQiOjE3NDk2MzA3MzcsImV4cCI6MTc4MTE2NjczN30.V4okpSzbqNTeFklZljZEiHDZMa2fTH_YKvQJ7uve3NM';
+  final String userId = '3203'; // Replace with actual user id if available
+
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final _formKey = GlobalKey<FormState>();
   final _reasonController = TextEditingController();
 
+  List<LeaveType> leaveTypes = [];
+  bool isLoadingLeaveTypes = true;
   String? selectedLeaveType;
   String? selectedAlternate;
   DateTime? fromDate;
@@ -22,18 +34,63 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
   String? fileName;
   bool isSubmitting = false;
 
-  final List<Map<String, dynamic>> leaveTypes = [
-    {'value': 'Casual Leave', 'icon': Icons.beach_access, 'color': Colors.blue},
-    {'value': 'Sick Leave', 'icon': Icons.local_hospital, 'color': Colors.red},
-    {'value': 'Compensation Leave', 'icon': Icons.access_time, 'color': Colors.orange},
-    {'value': 'Outdoor Duty', 'icon': Icons.work_outline, 'color': Colors.green},
-  ];
+  List<AlternatePerson> alternates = [];
+  bool isLoadingAlternates = true;
 
-  final List<Map<String, dynamic>> alternates = [
-    {'value': 'Dr. Smith', 'department': 'Cardiology'},
-    {'value': 'Ms. Patel', 'department': 'Neurology'},
-    {'value': 'Mr. John', 'department': 'Emergency'},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchLeaveTypes();
+    _fetchAlternates();
+  }
+
+  Future<void> _fetchLeaveTypes() async {
+    setState(() {
+      isLoadingLeaveTypes = true;
+    });
+    try {
+      List<LeaveType> fetchedLeaveTypes = await ApiServices.getLeaveTypes(
+        token: apiToken,
+      );
+      setState(() {
+        leaveTypes = fetchedLeaveTypes;
+        isLoadingLeaveTypes = false;
+      });
+    } catch (e) {
+      setState(() {
+        isLoadingLeaveTypes = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load leave types: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _fetchAlternates() async {
+    setState(() {
+      isLoadingAlternates = true;
+    });
+    try {
+      List<AlternatePerson> fetchedAlternates = await ApiServices.getAlternates(token: apiToken);
+      setState(() {
+        alternates = fetchedAlternates;
+        isLoadingAlternates = false;
+      });
+    } catch (e) {
+      setState(() {
+        isLoadingAlternates = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load alternates: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -44,9 +101,9 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
   Future<void> _pickDate({required bool isFrom}) async {
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: isFrom 
-        ? (fromDate ?? DateTime.now()) 
-        : (toDate ?? fromDate ?? DateTime.now()),
+      initialDate: isFrom
+          ? (fromDate ?? DateTime.now())
+          : (toDate ?? fromDate ?? DateTime.now()),
       firstDate: DateTime.now().subtract(const Duration(days: 30)),
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (context, child) {
@@ -61,7 +118,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
         );
       },
     );
-    
+
     if (pickedDate != null) {
       setState(() {
         if (isFrom) {
@@ -83,7 +140,9 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Select File'),
-        content: const Text('File picker would open here. For demo, we\'ll simulate a selected file.'),
+        content: const Text(
+          'File picker would open here. For demo, we\'ll simulate a selected file.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -160,71 +219,46 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
   }
 
   Widget _buildLeaveTypeDropdown() {
-    return DropdownButtonFormField<String>(
+    if (isLoadingLeaveTypes) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return DropdownButtonFormField<int>(
       decoration: const InputDecoration(
         labelText: 'Select Leave Type',
         prefixIcon: Icon(Icons.category_outlined),
       ),
       items: leaveTypes.map((type) {
-        return DropdownMenuItem(
-          value: type['value'] as String,
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: (type['color'] as Color).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Icon(
-                  type['icon'] as IconData,
-                  color: type['color'] as Color,
-                  size: 16,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(type['value'] as String),
-            ],
-          ),
+        return DropdownMenuItem<int>(
+          value: type.leaveId,
+          child: Text(type.lname),
         );
       }).toList(),
-      value: selectedLeaveType,
-      onChanged: (val) => setState(() => selectedLeaveType = val),
+      value: selectedLeaveType == null
+          ? null
+          : int.tryParse(selectedLeaveType!),
+      onChanged: (val) => setState(() => selectedLeaveType = val?.toString()),
       validator: (val) => val == null ? 'Please select a leave type' : null,
     );
   }
 
   Widget _buildAlternateDropdown() {
-    return DropdownButtonFormField<String>(
+    if (isLoadingAlternates) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return DropdownButtonFormField<int>(
       decoration: const InputDecoration(
-        labelText: 'Select Alternate Person',
+        labelText: 'Select Alternate Faculty',
         prefixIcon: Icon(Icons.person_outline),
       ),
       items: alternates.map((alt) {
-        return DropdownMenuItem(
-          value: alt['value'] as String,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                alt['value'] as String,
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              Text(
-                alt['department'] as String,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ],
-          ),
+        return DropdownMenuItem<int>(
+          value: alt.facultyId,
+          child: Text(alt.name),
         );
       }).toList(),
-      value: selectedAlternate,
-      onChanged: (val) => setState(() => selectedAlternate = val),
-      validator: (val) => val == null ? 'Please select an alternate person' : null,
+      value: selectedAlternate == null ? null : int.tryParse(selectedAlternate!),
+      onChanged: (val) => setState(() => selectedAlternate = val?.toString()),
+      validator: (val) => val == null ? 'Please select an alternate faculty' : null,
     );
   }
 
@@ -327,10 +361,8 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                         const SizedBox(height: 8),
                         Text(
                           'Leave Application',
-                          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                            color: Colors.white,
-                            fontSize: 28,
-                          ),
+                          style: Theme.of(context).textTheme.headlineLarge
+                              ?.copyWith(color: Colors.white, fontSize: 28),
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -365,7 +397,9 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                                 label: 'From Date',
                                 date: fromDate,
                                 onTap: () => _pickDate(isFrom: true),
-                                validator: (_) => fromDate == null ? 'Select from date' : null,
+                                validator: (_) => fromDate == null
+                                    ? 'Select from date'
+                                    : null,
                               ),
                             ),
                             const SizedBox(width: 16),
@@ -376,7 +410,8 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                                 onTap: () => _pickDate(isFrom: false),
                                 validator: (_) {
                                   if (toDate == null) return 'Select to date';
-                                  if (fromDate != null && toDate!.isBefore(fromDate!)) {
+                                  if (fromDate != null &&
+                                      toDate!.isBefore(fromDate!)) {
                                     return 'To date must be after from date';
                                   }
                                   return null;
@@ -413,8 +448,9 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                         ),
                         alignLabelWithHint: true,
                       ),
-                      validator: (val) => val == null || val.trim().isEmpty 
-                          ? 'Please provide a reason for leave' : null,
+                      validator: (val) => val == null || val.trim().isEmpty
+                          ? 'Please provide a reason for leave'
+                          : null,
                     ),
                   ),
 
@@ -441,24 +477,24 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               border: Border.all(
-                                color: fileName != null 
-                                    ? const Color(0xFF10B981) 
+                                color: fileName != null
+                                    ? const Color(0xFF10B981)
                                     : Colors.grey.shade300,
                                 width: 2,
                               ),
                               borderRadius: BorderRadius.circular(12),
-                              color: fileName != null 
+                              color: fileName != null
                                   ? const Color(0xFF10B981).withOpacity(0.05)
                                   : Colors.grey.shade50,
                             ),
                             child: Row(
                               children: [
                                 Icon(
-                                  fileName != null 
-                                      ? Icons.check_circle_outline 
+                                  fileName != null
+                                      ? Icons.check_circle_outline
                                       : Icons.cloud_upload_outlined,
-                                  color: fileName != null 
-                                      ? const Color(0xFF10B981) 
+                                  color: fileName != null
+                                      ? const Color(0xFF10B981)
                                       : Colors.grey.shade400,
                                 ),
                                 const SizedBox(width: 12),
@@ -466,11 +502,11 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                                   child: Text(
                                     fileName ?? 'Tap to select file',
                                     style: TextStyle(
-                                      color: fileName != null 
-                                          ? const Color(0xFF10B981) 
+                                      color: fileName != null
+                                          ? const Color(0xFF10B981)
                                           : Colors.grey.shade600,
-                                      fontWeight: fileName != null 
-                                          ? FontWeight.w500 
+                                      fontWeight: fileName != null
+                                          ? FontWeight.w500
                                           : FontWeight.normal,
                                     ),
                                   ),
@@ -478,7 +514,8 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                                 if (fileName != null)
                                   IconButton(
                                     icon: const Icon(Icons.close, size: 20),
-                                    onPressed: () => setState(() => fileName = null),
+                                    onPressed: () =>
+                                        setState(() => fileName = null),
                                     color: Colors.grey.shade600,
                                   ),
                               ],
@@ -502,80 +539,74 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                         ),
                         elevation: 3,
                       ),
-                      onPressed: isSubmitting ? null : () async {
-                        if (_formKey.currentState!.validate()) {
-                          setState(() => isSubmitting = true);
-                          
-                          // Simulate API call
-                          await Future.delayed(const Duration(seconds: 2));
-                          
-                          setState(() => isSubmitting = false);
-                          
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Row(
-                                  children: [
-                                    Icon(Icons.check_circle, color: Colors.white),
-                                    SizedBox(width: 12),
-                                    Text("Leave application submitted successfully!"),
-                                  ],
-                                ),
-                                backgroundColor: const Color(0xFF10B981),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            );
-                          }
-                          
-                          // Reset form
-                          _formKey.currentState!.reset();
-                          setState(() {
-                            selectedLeaveType = null;
-                            selectedAlternate = null;
-                            fromDate = null;
-                            toDate = null;
-                            fileName = null;
-                          });
-                          _reasonController.clear();
-                        }
-                      },
+                      onPressed: isSubmitting
+                          ? null
+                          : () async {
+                              if (_formKey.currentState!.validate()) {
+                                setState(() => isSubmitting = true);
+
+                                try {
+                                  // Use the provided token and userId directly
+                                  String token = apiToken;
+                                  String uid = userId;
+
+                                  final now = DateTime.now();
+                                  final appliedDate = DateFormat(
+                                    'yyyy-MM-dd',
+                                  ).format(now);
+                                  final fromDateStr = fromDate != null
+                                      ? DateFormat(
+                                          'yyyy-MM-dd',
+                                        ).format(fromDate!)
+                                      : '';
+                                  final toDateStr = toDate != null
+                                      ? DateFormat('yyyy-MM-dd').format(toDate!)
+                                      : '';
+
+                                  final request = ApplyLeaveRequest(
+                                    leaveId: selectedLeaveType ?? '',
+                                    fromDate: fromDateStr,
+                                    toDate: toDateStr,
+                                    appliedDate: appliedDate,
+                                    reason: _reasonController.text.trim(),
+                                    noOfDate: toDate != null && fromDate != null
+                                        ? toDate!.difference(fromDate!).inDays +
+                                              1
+                                        : 0,
+                                    alternate: selectedAlternate ?? '',
+                                    uid: uid,
+                                    doc: fileName ?? '',
+                                    halfFullDay: '', // Adjust if needed
+                                  );
+
+                                  final response = await ApiServices.applyLeave(
+                                    request: request,
+                                    token: token,
+                                  );
+
+                                  // ...handle response...
+                                } catch (e) {
+                                  // ...handle error...
+                                } finally {
+                                  setState(() => isSubmitting = false);
+                                }
+                              }
+                            },
                       child: isSubmitting
-                          ? const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                ),
-                                SizedBox(width: 12),
-                                Text(
-                                  'Submitting...',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
+                          ? const CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             )
                           : const Text(
-                              'Submit Leave Application',
+                              'Submit Leave Request',
                               style: TextStyle(
-                                color: Colors.white,
                                 fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                     ),
                   ),
-                  const SizedBox(height: 20),
                 ],
               ),
             ),
@@ -585,3 +616,5 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
     );
   }
 }
+
+/* AlternatePerson class removed; now imported from ../models/alternate_models.dart */

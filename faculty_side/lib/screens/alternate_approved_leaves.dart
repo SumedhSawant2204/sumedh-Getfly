@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../widgets/app_header.dart';
 import '../widgets/side_drawer.dart';
 
@@ -153,11 +154,11 @@ class _AlternateApprovedLeavesState extends State<AlternateApprovedLeaves> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: _scaffoldKey,  // <-- assign scaffold key here
+      key: _scaffoldKey,
       drawer: const SideDrawer(),
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(60),
-        child: AppHeader(scaffoldKey: _scaffoldKey), // <-- pass scaffold key here
+        child: AppHeader(scaffoldKey: _scaffoldKey),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
@@ -165,7 +166,7 @@ class _AlternateApprovedLeavesState extends State<AlternateApprovedLeaves> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ElevatedButton.icon(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => context.pop(), // Updated to use GoRouter's context.pop()
               icon: const Icon(Icons.arrow_back),
               label: const Text("Back To Approval"),
               style: ElevatedButton.styleFrom(
