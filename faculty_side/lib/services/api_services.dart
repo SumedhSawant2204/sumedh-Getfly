@@ -1,8 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
+import 'package:dio/dio.dart';
 import '../models/faculty.dart' hide LeaveType;
 import '../screens/apply_leave_screen.dart';
 import '../models/leave_type.dart';
@@ -21,6 +20,8 @@ class ApiServices {
   static const String staticToken =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjMyMDMsInVzZXJfdHlwZSI6MiwicHJpdmlsZWdlIjpudWxsLCJpYXQiOjE3NDk2MzA3MzcsImV4cCI6MTc4MTE2NjczN30.V4okpSzbqNTeFklZljZEiHDZMa2fTH_YKvQJ7uve3NM';
 
+  static Dio _dio = Dio();
+
   static Map<String, String> _getHeaders({String? token}) {
     return {
       'Authorization': 'Bearer ${token ?? staticToken}',
@@ -29,19 +30,22 @@ class ApiServices {
     };
   }
 
-  ///////
   static Future<List<LeaveType>> getLeaveTypes({required String token}) async {
-    final response = await http.get(
-      Uri.parse('${baseUrl}get_allowed_leaves?uid=$uid'),
-      headers: _getHeaders(token: token),
-    );
-    print('this is the response: ${response.body}');
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> jsonBody = json.decode(response.body);
-      final List<dynamic> data = jsonBody['leave_list'] ?? [];
-      return data.map((item) => LeaveType.fromJson(item)).toList();
-    } else {
-      throw Exception('Failed to load leave types: ${response.statusCode}');
+    try {
+      final response = await _dio.get(
+        '${baseUrl}get_allowed_leaves?uid=$uid',
+        options: Options(headers: _getHeaders(token: token)),
+      );
+      print('this is the response: ${response.data}');
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonBody = response.data;
+        final List<dynamic> data = jsonBody['leave_list'] ?? [];
+        return data.map((item) => LeaveType.fromJson(item)).toList();
+      } else {
+        throw Exception('Failed to load leave types: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Failed to load leave types: $e');
     }
   }
 
@@ -55,13 +59,13 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.get(
-        Uri.parse('${baseUrl}get_allowed_leaves?uid=$uid'),
-        headers: _getHeaders(token: token),
+      final response = await _dio.get(
+        '${baseUrl}get_allowed_leaves?uid=$uid',
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return AllowedLeavesResponse.fromJson(json.decode(response.body));
+        return AllowedLeavesResponse.fromJson(response.data);
       } else {
         throw Exception('Failed to get allowed leaves: ${response.statusCode}');
       }
@@ -76,13 +80,13 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.get(
-        Uri.parse('${baseUrl}dashboard?uid=$uid'),
-        headers: _getHeaders(token: token),
+      final response = await _dio.get(
+        '${baseUrl}dashboard?uid=$uid',
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return DashboardResponse.fromJson(json.decode(response.body));
+        return DashboardResponse.fromJson(response.data);
       } else {
         throw Exception(
           'Failed to get dashboard records: ${response.statusCode}',
@@ -100,13 +104,13 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.get(
-        Uri.parse('${baseUrl}getLeaveCount?id=$id&uid=$uid'),
-        headers: _getHeaders(token: token),
+      final response = await _dio.get(
+        '${baseUrl}getLeaveCount?id=$id&uid=$uid',
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return LeaveCountResponse.fromJson(json.decode(response.body));
+        return LeaveCountResponse.fromJson(response.data);
       } else {
         throw Exception('Failed to get leave count: ${response.statusCode}');
       }
@@ -121,29 +125,26 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('${baseUrl}upload'),
-      );
-
-      request.headers.addAll({
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
+      FormData formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(
+          file.path,
+          filename: file.path.split('/').last,
+        ),
       });
 
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'file',
-          file.path,
-          contentType: MediaType('application', 'octet-stream'),
+      final response = await _dio.post(
+        '${baseUrl}upload',
+        data: formData,
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Accept': 'application/json',
+          },
         ),
       );
 
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
-
       if (response.statusCode == 200) {
-        return UploadResponse.fromJson(json.decode(response.body));
+        return UploadResponse.fromJson(response.data);
       } else {
         throw Exception('Failed to upload document: ${response.statusCode}');
       }
@@ -158,14 +159,14 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('${baseUrl}Apply_leave'),
-        headers: _getHeaders(token: token),
-        body: json.encode(request.toJson()),
+      final response = await _dio.post(
+        '${baseUrl}Apply_leave',
+        data: request.toJson(),
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return ApplyLeaveResponse.fromJson(json.decode(response.body));
+        return ApplyLeaveResponse.fromJson(response.data);
       } else {
         throw Exception('Failed to apply leave: ${response.statusCode}');
       }
@@ -182,13 +183,13 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.get(
-        Uri.parse('${baseUrl}leave_hisotry?uid=$uid'),
-        headers: _getHeaders(token: token),
+      final response = await _dio.get(
+        '${baseUrl}leave_hisotry?uid=$uid',
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return LeaveHistoryResponse.fromJson(json.decode(response.body));
+        return LeaveHistoryResponse.fromJson(response.data);
       } else {
         throw Exception('Failed to get leave history: ${response.statusCode}');
       }
@@ -203,14 +204,14 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('${baseUrl}cancel_leave'),
-        headers: _getHeaders(token: token),
-        body: json.encode({'id': id}),
+      final response = await _dio.post(
+        '${baseUrl}cancel_leave',
+        data: {'id': id},
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return CancelLeaveResponse.fromJson(json.decode(response.body));
+        return CancelLeaveResponse.fromJson(response.data);
       } else {
         throw Exception('Failed to cancel leave: ${response.statusCode}');
       }
@@ -226,17 +227,17 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('${baseUrl}postLeaveDocument'),
-        headers: _getHeaders(token: token),
-        body: json.encode({
+      final response = await _dio.post(
+        '${baseUrl}postLeaveDocument',
+        data: {
           'uploadedFileName': uploadedFileName,
           'leaveid': leaveid,
-        }),
+        },
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return PostLeaveDocumentResponse.fromJson(json.decode(response.body));
+        return PostLeaveDocumentResponse.fromJson(response.data);
       } else {
         throw Exception(
           'Failed to post leave document: ${response.statusCode}',
@@ -253,13 +254,13 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.get(
-        Uri.parse('${baseUrl}faculty_cancelled_leave?uid=$uid'),
-        headers: _getHeaders(token: token),
+      final response = await _dio.get(
+        '${baseUrl}faculty_cancelled_leave?uid=$uid',
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return CancelledLeaveResponse.fromJson(json.decode(response.body));
+        return CancelledLeaveResponse.fromJson(response.data);
       } else {
         throw Exception(
           'Failed to get cancelled leaves: ${response.statusCode}',
@@ -278,13 +279,13 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.get(
-        Uri.parse('${dashboardUrl}dashboard?uid=$uid'),
-        headers: _getHeaders(token: token),
+      final response = await _dio.get(
+        '${dashboardUrl}dashboard?uid=$uid',
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return FacultyDashboardResponse.fromJson(json.decode(response.body));
+        return FacultyDashboardResponse.fromJson(response.data);
       } else {
         throw Exception(
           'Failed to get faculty dashboard: ${response.statusCode}',
@@ -301,13 +302,13 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.get(
-        Uri.parse('${dashboardUrl}getPrevilege?uid=$uid'),
-        headers: _getHeaders(token: token),
+      final response = await _dio.get(
+        '${dashboardUrl}getPrevilege?uid=$uid',
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return PrivilegeResponse.fromJson(json.decode(response.body));
+        return PrivilegeResponse.fromJson(response.data);
       } else {
         throw Exception(
           'Failed to get faculty privileges: ${response.statusCode}',
@@ -323,13 +324,13 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.get(
-        Uri.parse('${dashboardUrl}leaveApproval'),
-        headers: _getHeaders(token: token),
+      final response = await _dio.get(
+        '${dashboardUrl}leaveApproval',
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return LeaveApprovalResponse.fromJson(json.decode(response.body));
+        return LeaveApprovalResponse.fromJson(response.data);
       } else {
         throw Exception(
           'Failed to get HR pending approvals: ${response.statusCode}',
@@ -346,14 +347,14 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('${dashboardUrl}update_leave_status'),
-        headers: _getHeaders(token: token),
-        body: json.encode(request.toJson()),
+      final response = await _dio.post(
+        '${dashboardUrl}update_leave_status',
+        data: request.toJson(),
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return UpdateLeaveStatusResponse.fromJson(json.decode(response.body));
+        return UpdateLeaveStatusResponse.fromJson(response.data);
       } else {
         throw Exception(
           'Failed to update leave status: ${response.statusCode}',
@@ -372,18 +373,18 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('${dashboardUrl}update_Allleave_status'),
-        headers: _getHeaders(token: token),
-        body: json.encode({
+      final response = await _dio.post(
+        '${dashboardUrl}update_Allleave_status',
+        data: {
           'role': role,
           'uid': uid,
           'aproveSelected': approveSelected,
-        }),
+        },
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return ApproveAllLeavesResponse.fromJson(json.decode(response.body));
+        return ApproveAllLeavesResponse.fromJson(response.data);
       } else {
         throw Exception('Failed to approve all leaves: ${response.statusCode}');
       }
@@ -400,18 +401,18 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('${dashboardUrl}denyClick'),
-        headers: _getHeaders(token: token),
-        body: json.encode({
+      final response = await _dio.post(
+        '${dashboardUrl}denyClick',
+        data: {
           'app_id': appId,
           'status': status,
           'reason': reason,
-        }),
+        },
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return DenyLeaveResponse.fromJson(json.decode(response.body));
+        return DenyLeaveResponse.fromJson(response.data);
       } else {
         throw Exception(
           'Failed to deny leave application: ${response.statusCode}',
@@ -429,14 +430,14 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('${dashboardUrl}takeCharge'),
-        headers: _getHeaders(token: token),
-        body: json.encode({'app_id': appId, 'status': status}),
+      final response = await _dio.post(
+        '${dashboardUrl}takeCharge',
+        data: {'app_id': appId, 'status': status},
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return TakeChargeResponse.fromJson(json.decode(response.body));
+        return TakeChargeResponse.fromJson(response.data);
       } else {
         throw Exception(
           'Failed to take charge of leave: ${response.statusCode}',
@@ -457,18 +458,18 @@ class ApiServices {
     required String token,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('${dashboardUrl}report/myPunchReport'),
-        headers: _getHeaders(token: token),
-        body: json.encode({
+      final response = await _dio.post(
+        '${dashboardUrl}report/myPunchReport',
+        data: {
           'startDate': startDate,
           'endDate': endDate,
           'faculty_clg_id': facultyClgId,
-        }),
+        },
+        options: Options(headers: _getHeaders(token: token)),
       );
 
       if (response.statusCode == 200) {
-        return PunchReportResponse.fromJson(json.decode(response.body));
+        return PunchReportResponse.fromJson(response.data);
       } else {
         throw Exception('Failed to get punch report: ${response.statusCode}');
       }
@@ -478,17 +479,21 @@ class ApiServices {
   }
 
   static Future<List<AlternatePerson>> getAlternates({required String token}) async {
-    final response = await http.get(
-      Uri.parse('${baseUrl}get_allowed_leaves?uid=$uid'),
-      headers: _getHeaders(token: token),
-    );
-    print('response of alternates: ${response.body}');
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> jsonBody = json.decode(response.body);
-      final List<dynamic> data = jsonBody['facultylist'] ?? [];
-      return data.map((item) => AlternatePerson.fromJson(item)).toList();
-    } else {
-      throw Exception('Failed to load alternates: ${response.statusCode}');
+    try {
+      final response = await _dio.get(
+        '${baseUrl}get_allowed_leaves?uid=$uid',
+        options: Options(headers: _getHeaders(token: token)),
+      );
+      print('response of alternates: ${response.data}');
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonBody = response.data;
+        final List<dynamic> data = jsonBody['facultylist'] ?? [];
+        return data.map((item) => AlternatePerson.fromJson(item)).toList();
+      } else {
+        throw Exception('Failed to load alternates: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Failed to load alternates: $e');
     }
   }
 }
