@@ -413,7 +413,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: const LeavesSummary(),
+        child: LeavesSummary(
+          uid: '195',
+          token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjMyMDMsInVzZXJfdHlwZSI6MiwicHJpdmlsZWdlIjpudWxsLCJpYXQiOjE3NDk2MzA3MzcsImV4cCI6MTc4MTE2NjczN30.V4okpSzbqNTeFklZljZEiHDZMa2fTH_YKvQJ7uve3NM',
+        ),
       ),
     );
   }

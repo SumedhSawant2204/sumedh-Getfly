@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../themes/theme.dart'; // Adjust path if needed
+import '../services/api_services.dart';
+import '../models/LeaveCountResponse.dart';
 
 class LeavesSummary extends StatefulWidget {
-  const LeavesSummary({super.key});
+  final String uid;
+  final String token;
+
+  const LeavesSummary({super.key, required this.uid, required this.token});
 
   @override
   State<LeavesSummary> createState() => _LeavesSummaryState();
@@ -12,17 +17,21 @@ class LeavesSummary extends StatefulWidget {
 
 class _LeavesSummaryState extends State<LeavesSummary>
     with SingleTickerProviderStateMixin {
-  final List<String> leaves = [
-    'Casual Leave -',
-    'Earned Leave -',
-    'Medical Leave -',
-    'Summer Vacation -',
-    'Winter Vacation -',
-    'Compensation Leave -',
-  ];
-
   final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
   late AnimationController _controller;
+
+  List<Map<String, dynamic>> leaveData = [];
+  bool _loading = true;
+  String? _error;
+
+  final icons = [
+    FontAwesomeIcons.clock,
+    FontAwesomeIcons.briefcase,
+    FontAwesomeIcons.stethoscope,
+    FontAwesomeIcons.sun,
+    FontAwesomeIcons.snowflake,
+    FontAwesomeIcons.moneyCheckAlt,
+  ];
 
   @override
   void initState() {
@@ -31,11 +40,65 @@ class _LeavesSummaryState extends State<LeavesSummary>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
-    _insertItems();
+    _fetchLeaves();
+  }
+
+  Future<void> _fetchLeaves() async {
+    try {
+      final result = await ApiServices.getLeaveCount(
+        uid: widget.uid,
+        token: widget.token,
+      );
+      if (result.isNotEmpty) {
+        final leave = result.first;
+        leaveData = [
+          {
+            'label': 'Casual Leave',
+            'value': leave.casualLeave,
+            'icon': icons[0],
+          },
+          {
+            'label': 'Earned Leave',
+            'value': leave.earnedLeave,
+            'icon': icons[1],
+          },
+          {
+            'label': 'Medical Leave',
+            'value': leave.medicalLeave,
+            'icon': icons[2],
+          },
+          {
+            'label': 'Summer Vacation',
+            'value': leave.summerVacation,
+            'icon': icons[3],
+          },
+          {
+            'label': 'Winter Vacation',
+            'value': leave.winterVacation,
+            'icon': icons[4],
+          },
+          {
+            'label': 'Compensation Leave',
+            'value': leave.compensationLeave,
+            'icon': icons[5],
+          },
+        ];
+      }
+      setState(() {
+        _loading = false;
+        _error = null;
+      });
+      _insertItems();
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
   }
 
   void _insertItems() async {
-    for (int i = 0; i < leaves.length; i++) {
+    for (int i = 0; i < leaveData.length; i++) {
       await Future.delayed(const Duration(milliseconds: 150));
       _listKey.currentState?.insertItem(i);
     }
@@ -47,17 +110,8 @@ class _LeavesSummaryState extends State<LeavesSummary>
     super.dispose();
   }
 
-  Widget _buildLeaveItem(String leave, int index, Animation<double> animation) {
+  Widget _buildLeaveItem(Map<String, dynamic> leave, int index, Animation<double> animation) {
     final theme = Theme.of(context);
-
-    final icons = [
-      FontAwesomeIcons.clock,
-      FontAwesomeIcons.briefcase,
-      FontAwesomeIcons.stethoscope,
-      FontAwesomeIcons.sun,
-      FontAwesomeIcons.snowflake,
-      FontAwesomeIcons.moneyCheckAlt,
-    ];
 
     return SizeTransition(
       sizeFactor: animation,
@@ -81,13 +135,13 @@ class _LeavesSummaryState extends State<LeavesSummary>
             radius: 22,
             backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
             child: Icon(
-              icons[index % icons.length],
+              leave['icon'],
               color: theme.colorScheme.primary,
               size: 18,
             ),
           ),
           title: Text(
-            leave,
+            '${leave['label']} - ${leave['value']}',
             style: GoogleFonts.inter(
               fontSize: 15,
               fontWeight: FontWeight.w500,
@@ -102,7 +156,7 @@ class _LeavesSummaryState extends State<LeavesSummary>
           onTap: () {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('$leave clicked'),
+                content: Text('${leave['label']} clicked'),
                 backgroundColor: theme.colorScheme.primary,
               ),
             );
@@ -145,15 +199,20 @@ class _LeavesSummaryState extends State<LeavesSummary>
               ),
             ),
             const SizedBox(height: 12),
-            AnimatedList(
-              key: _listKey,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              initialItemCount: 0,
-              itemBuilder: (context, index, animation) {
-                return _buildLeaveItem(leaves[index], index, animation);
-              },
-            ),
+            if (_loading)
+              const Center(child: CircularProgressIndicator())
+            else if (_error != null)
+              Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
+            else
+              AnimatedList(
+                key: _listKey,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                initialItemCount: 0,
+                itemBuilder: (context, index, animation) {
+                  return _buildLeaveItem(leaveData[index], index, animation);
+                },
+              ),
           ],
         ),
       ),

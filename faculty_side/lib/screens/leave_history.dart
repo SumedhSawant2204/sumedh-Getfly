@@ -1,113 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../models/leave_request.dart';
+import '../services/api_services.dart';
+import '../models/leave_history_model.dart' as leave_history;
 import '../themes/theme.dart';
 
 class LeaveHistoryScreen extends StatefulWidget {
-  const LeaveHistoryScreen({super.key});
+  final String uid;
+  final String token;
+
+  const LeaveHistoryScreen({Key? key, required this.uid, required this.token}) : super(key: key);
 
   @override
   State<LeaveHistoryScreen> createState() => _LeaveHistoryScreenState();
 }
 
 class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
-  List<LeaveRecord> _leaveRecords = [];
-  bool _isLoading = true;
-  String? _error;
+  late Future<List<leave_history.LeaveHistoryResponse>> _leaveHistoryFuture;
 
   @override
   void initState() {
     super.initState();
-    _loadLeaveHistory();
+    _leaveHistoryFuture = ApiServices.getLeaveHistory(
+      uid: widget.uid,
+      token: widget.token,
+    ).then((value) => value.cast<leave_history.LeaveHistoryResponse>());
   }
 
-  Future<void> _loadLeaveHistory() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 1));
-      
-      setState(() {
-        _leaveRecords = [
-          LeaveRecord(
-            srNo: 1,
-            fromDate: DateTime(2024, 12, 15),
-            toDate: DateTime(2024, 12, 17),
-            numberOfDays: 3,
-            leaveType: 'Sick Leave',
-            reason: 'Medical emergency - doctor consultation required',
-            uploadDocument: 'medical_certificate.pdf',
-            alternateApprovalStatus: 'Approved',
-            approvedByHOD: 'Dr. John Smith',
-            approvalStatus: 'Approved',
-            canCancel: false,
-          ),
-          LeaveRecord(
-            srNo: 2,
-            fromDate: DateTime(2024, 11, 20),
-            toDate: DateTime(2024, 11, 22),
-            numberOfDays: 2,
-            leaveType: 'Casual Leave',
-            reason: 'Personal work - family function',
-            uploadDocument: null,
-            alternateApprovalStatus: 'Pending',
-            approvedByHOD: '',
-            approvalStatus: 'Pending',
-            canCancel: true,
-          ),
-          LeaveRecord(
-            srNo: 3,
-            fromDate: DateTime(2024, 10, 10),
-            toDate: DateTime(2024, 10, 12),
-            numberOfDays: 3,
-            leaveType: 'Annual Leave',
-            reason: 'Vacation with family',
-            uploadDocument: null,
-            alternateApprovalStatus: 'Rejected',
-            approvedByHOD: 'Dr. Sarah Wilson',
-            approvalStatus: 'Rejected',
-            canCancel: false,
-          ),
-        ];
-        _isLoading = false;
-      });
-    } catch (error) {
-      setState(() {
-        _error = error.toString();
-        _isLoading = false;
-      });
+  String _statusText(int? status) {
+    switch (status) {
+      case 0:
+        return 'Pending';
+      case 1:
+        return 'Approved';
+      case 2:
+        return 'Rejected';
+      default:
+        return 'Unknown';
     }
-  }
-
-  Future<void> _refreshLeaveHistory() async {
-    await _loadLeaveHistory();
-  }
-
-  Future<void> _cancelLeave(int srNo) async {
-    setState(() {
-      _leaveRecords = _leaveRecords.map((r) {
-        if (r.srNo == srNo) {
-          return LeaveRecord(
-            srNo: r.srNo,
-            fromDate: r.fromDate,
-            toDate: r.toDate,
-            numberOfDays: r.numberOfDays,
-            leaveType: r.leaveType,
-            reason: r.reason,
-            uploadDocument: r.uploadDocument,
-            alternateApprovalStatus: 'Cancelled',
-            approvedByHOD: r.approvedByHOD,
-            approvalStatus: 'Cancelled',
-            canCancel: false,
-          );
-        }
-        return r;
-      }).toList();
-    });
   }
 
   @override
@@ -181,7 +110,16 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                 ),
                 child: IconButton(
                   icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
-                  onPressed: _refreshLeaveHistory,
+                  onPressed: () {
+                    setState(() {
+                      _leaveHistoryFuture = ApiServices.getLeaveHistory(
+                        uid: widget.uid,
+                        token: widget.token,
+                      ).then((list) => list
+                          .map((e) => e as leave_history.LeaveHistoryResponse)
+                          .toList());
+                    });
+                  },
                 ),
               ),
             ],
@@ -195,37 +133,47 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
   }
 
   Widget _buildContent() {
-    if (_isLoading) {
-      return SizedBox(
-        height: 300,
-        child: Center(
+    return FutureBuilder<List<leave_history.LeaveHistoryResponse>>(
+      future: _leaveHistoryFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return SizedBox(
+            height: 300,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    color: AppColors.accent,
+                    strokeWidth: 3,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Loading...',
+                    style: GoogleFonts.inter(color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          );
+        } else if (snapshot.hasError) {
+          return _buildErrorState();
+        } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return _buildEmptyState();
+        }
+        final history = snapshot.data!;
+        return Padding(
+          padding: const EdgeInsets.all(16),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(
-                color: AppColors.accent,
-                strokeWidth: 3,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Loading...',
-                style: GoogleFonts.inter(color: AppColors.textSecondary),
-              ),
-            ],
+            children: history
+                .asMap()
+                .entries
+                .map((e) => _buildCard(e.value, e.key))
+                .toList(),
           ),
-        ),
-      );
-    }
-
-    if (_error != null) {
-      return _buildErrorState();
-    }
-
-    if (_leaveRecords.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    return _buildRecordsList();
+        );
+      },
+    );
   }
 
   Widget _buildEmptyState() {
@@ -285,20 +233,7 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
     );
   }
 
-  Widget _buildRecordsList() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: _leaveRecords
-            .asMap()
-            .entries
-            .map((e) => _buildCard(e.value, e.key))
-            .toList(),
-      ),
-    );
-  }
-
-  Widget _buildCard(LeaveRecord record, int index) {
+  Widget _buildCard(leave_history.LeaveHistoryResponse record, int index) {
     return TweenAnimationBuilder(
       duration: Duration(milliseconds: 300 + (index * 100)),
       tween: Tween<double>(begin: 0.0, end: 1.0),
@@ -318,7 +253,7 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                   offset: const Offset(0, 5),
                 ),
                 BoxShadow(
-                  color: _getStatusColor(record.approvalStatus).withOpacity(0.1),
+                  color: _getStatusColor(record.status).withOpacity(0.1),
                   blurRadius: 10,
                   spreadRadius: -3,
                 ),
@@ -333,7 +268,7 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                   child: Container(
                     width: 4,
                     decoration: BoxDecoration(
-                      color: _getStatusColor(record.approvalStatus),
+                      color: _getStatusColor(record.status),
                       borderRadius: const BorderRadius.only(
                         topLeft: Radius.circular(20),
                         bottomLeft: Radius.circular(20),
@@ -356,7 +291,7 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Text(
-                              'ID: ${record.srNo}',
+                              'ID: ${record.leaveAppId}', // Replace 'leaveId' with the actual field name if different
                               style: GoogleFonts.inter(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -367,10 +302,25 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: _getStatusColor(record.approvalStatus).withOpacity(0.1),
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              'Faculty ID: ${record.facultyId}', // Replace 'leaveId' with the actual field name if different
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(record.status).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: _getStatusColor(record.approvalStatus).withOpacity(0.3),
+                                color: _getStatusColor(record.status).withOpacity(0.3),
                               ),
                             ),
                             child: Row(
@@ -380,17 +330,17 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                                   width: 6,
                                   height: 6,
                                   decoration: BoxDecoration(
-                                    color: _getStatusColor(record.approvalStatus),
+                                    color: _getStatusColor(record.status),
                                     shape: BoxShape.circle,
                                   ),
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  record.approvalStatus.toUpperCase(),
+                                  _statusText(record.status).toUpperCase(),
                                   style: GoogleFonts.inter(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w700,
-                                    color: _getStatusColor(record.approvalStatus),
+                                    color: _getStatusColor(record.status),
                                     letterSpacing: 0.5,
                                   ),
                                 ),
@@ -405,13 +355,13 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: _getLeaveTypeColor(record.leaveType).withOpacity(0.1),
+                              color: _getLeaveTypeColor(record.lname).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Icon(
-                              _getLeaveIcon(record.leaveType),
+                              _getLeaveIcon(record.lname),
                               size: 18,
-                              color: _getLeaveTypeColor(record.leaveType),
+                              color: _getLeaveTypeColor(record.lname),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -420,7 +370,7 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  record.leaveType,
+                                  record.lname ?? 'Leave',
                                   style: GoogleFonts.inter(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,
@@ -428,7 +378,7 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                                   ),
                                 ),
                                 Text(
-                                  '${record.numberOfDays} ${record.numberOfDays == 1 ? 'day' : 'days'}',
+                                  '${record.noOfDays ?? '-'} ${record.noOfDays == 1 ? 'day' : 'days'}',
                                   style: GoogleFonts.inter(
                                     fontSize: 12,
                                     color: AppColors.textSecondary,
@@ -462,7 +412,7 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    '${record.fromDate.day}/${record.fromDate.month}/${record.fromDate.year}',
+                                    record.fromDate?.split("T").first ?? '-',
                                     style: GoogleFonts.inter(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
@@ -491,7 +441,7 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    '${record.toDate.day}/${record.toDate.month}/${record.toDate.year}',
+                                    record.toDate?.split("T").first ?? '-',
                                     style: GoogleFonts.inter(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
@@ -536,7 +486,48 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              record.reason,
+                              record.reason ?? '-',
+                              style: GoogleFonts.inter(
+                                fontSize: 14,
+                                color: AppColors.textPrimary,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.background.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.notes_rounded,
+                                  size: 14,
+                                  color: AppColors.textSecondary,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Alternate',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textSecondary,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              record.altname ?? '-',
                               style: GoogleFonts.inter(
                                 fontSize: 14,
                                 color: AppColors.textPrimary,
@@ -553,10 +544,10 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: (record.uploadDocument != null ? AppColors.success : AppColors.secondary).withOpacity(0.1),
+                                color: (record.docLink != null ? AppColors.success : AppColors.secondary).withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: (record.uploadDocument != null ? AppColors.success : AppColors.secondary).withOpacity(0.2),
+                                  color: (record.docLink != null ? AppColors.success : AppColors.secondary).withOpacity(0.2),
                                 ),
                               ),
                               child: Row(
@@ -564,16 +555,16 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                                   Icon(
                                     Icons.attach_file_rounded,
                                     size: 14,
-                                    color: record.uploadDocument != null ? AppColors.success : AppColors.secondary,
+                                    color: record.docLink != null ? AppColors.success : AppColors.secondary,
                                   ),
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      record.uploadDocument != null ? 'Document' : 'No Document',
+                                      record.docLink != null ? 'Document' : 'No Document',
                                       style: GoogleFonts.inter(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: record.uploadDocument != null ? AppColors.success : AppColors.secondary,
+                                        color: record.docLink != null ? AppColors.success : AppColors.secondary,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -587,10 +578,10 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: (record.approvedByHOD.isEmpty ? AppColors.warning : AppColors.success).withOpacity(0.1),
+                                color: ((record.hodApprovalDate?.isEmpty ?? true) ? AppColors.warning : AppColors.success).withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: (record.approvedByHOD.isEmpty ? AppColors.warning : AppColors.success).withOpacity(0.2),
+                                  color: ((record.hodApprovalDate?.isEmpty ?? true) ? AppColors.warning : AppColors.success).withOpacity(0.2),
                                 ),
                               ),
                               child: Row(
@@ -598,16 +589,16 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                                   Icon(
                                     Icons.person_outline_rounded,
                                     size: 14,
-                                    color: record.approvedByHOD.isEmpty ? AppColors.warning : AppColors.success,
+                                    color: (record.hodApprovalDate?.isEmpty ?? true) ? AppColors.warning : AppColors.success,
                                   ),
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      record.approvedByHOD.isEmpty ? 'Pending HOD' : 'HOD Approv...',
+                                      (record.hodApprovalDate?.isEmpty ?? true) ? 'Pending HOD' : 'HOD Approv...',
                                       style: GoogleFonts.inter(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: record.approvedByHOD.isEmpty ? AppColors.warning : AppColors.success,
+                                        color: (record.hodApprovalDate?.isEmpty ?? true) ? AppColors.warning : AppColors.success,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -618,30 +609,6 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                           ),
                         ],
                       ),
-                      if (record.canCancel) ...[
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () => _showCancelDialog(record),
-                            icon: const Icon(Icons.cancel_outlined, size: 16),
-                            label: Text(
-                              'CANCEL LEAVE',
-                              style: GoogleFonts.inter(
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.error,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -653,8 +620,8 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
     );
   }
 
-  IconData _getLeaveIcon(String type) {
-    switch (type.toLowerCase()) {
+  IconData _getLeaveIcon(String? type) {
+    switch (type?.toLowerCase()) {
       case 'sick leave':
         return Icons.local_hospital_rounded;
       case 'casual leave':
@@ -666,23 +633,21 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
     }
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'approved':
+  Color _getStatusColor(int? status) {
+    switch (status) {
+      case 1:
         return AppColors.success;
-      case 'pending':
+      case 0:
         return AppColors.warning;
-      case 'rejected':
+      case 2:
         return AppColors.error;
-      case 'cancelled':
-        return AppColors.secondary;
       default:
         return AppColors.info;
     }
   }
 
-  Color _getLeaveTypeColor(String type) {
-    switch (type.toLowerCase()) {
+  Color _getLeaveTypeColor(String? type) {
+    switch (type?.toLowerCase()) {
       case 'sick leave':
         return AppColors.error;
       case 'casual leave':
@@ -716,7 +681,14 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
           ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
-            onPressed: _refreshLeaveHistory,
+            onPressed: () {
+              setState(() {
+                _leaveHistoryFuture = ApiServices.getLeaveHistory(
+                  uid: widget.uid,
+                  token: widget.token,
+                ).then((list) => list.cast<leave_history.LeaveHistoryResponse>());
+              });
+            },
             icon: const Icon(Icons.refresh_rounded),
             label: const Text('Try Again'),
             style: ElevatedButton.styleFrom(
@@ -730,65 +702,5 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
       ),
     );
   }
-
-  void _showCancelDialog(LeaveRecord record) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: Text(
-          'Cancel Leave Request',
-          style: GoogleFonts.inter(
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        content: Text(
-          'Are you sure you want to cancel this leave application?',
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            color: AppColors.textSecondary,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Keep Leave',
-              style: GoogleFonts.inter(
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _cancelLeave(record.srNo);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Leave cancelled successfully'),
-                  backgroundColor: AppColors.success,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text('Cancel Leave'),
-          ),
-        ],
-      ),
-    );
-  }
 }
+

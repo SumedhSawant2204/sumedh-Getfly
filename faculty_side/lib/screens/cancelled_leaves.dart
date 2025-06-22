@@ -2,8 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../screens/apply_leave_screen.dart';
+import '../services/api_services.dart';
+import '../models/cancelled_leave_response.dart';
+import 'package:pie_chart/pie_chart.dart';
 
-// Models
+// Helper to parse string numbers like "12.00" or "0" to int
+int parseInt(dynamic value) {
+  if (value == null) return 0;
+  if (value is int) return value;
+  if (value is double) return value.toInt();
+  if (value is String) {
+    return int.tryParse(value.split('.').first) ?? 0;
+  }
+  return 0;
+}
+
 class LeaveData {
   final String facultyName;
   final int casualLeave, medicalLeave, earnedLeave, compensationLeave;
@@ -41,7 +54,11 @@ class AppColors {
 }
 
 class PendingLeaveScreen extends StatefulWidget {
-  const PendingLeaveScreen({Key? key}) : super(key: key);
+  final String uid;
+  final String token;
+
+  const PendingLeaveScreen({Key? key, required this.uid, required this.token})
+    : super(key: key);
 
   @override
   State<PendingLeaveScreen> createState() => _PendingLeaveScreenState();
@@ -51,8 +68,7 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
     with TickerProviderStateMixin {
   late AnimationController _heroController, _cardController;
   late Animation<double> _heroAnimation, _cardAnimation;
-  
-  // State management
+
   bool _isLoading = true;
   bool _hasError = false;
   LeaveData? _leaveData;
@@ -61,18 +77,28 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
   void initState() {
     super.initState();
     _heroController = AnimationController(
-        duration: const Duration(milliseconds: 1200), vsync: this);
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
     _cardController = AnimationController(
-        duration: const Duration(milliseconds: 800), vsync: this);
-    _heroAnimation =
-        CurvedAnimation(parent: _heroController, curve: Curves.easeOutBack);
-    _cardAnimation =
-        CurvedAnimation(parent: _cardController, curve: Curves.easeOutCubic);
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _heroAnimation = CurvedAnimation(
+      parent: _heroController,
+      curve: Curves.easeOutBack,
+    );
+    _cardAnimation = CurvedAnimation(
+      parent: _cardController,
+      curve: Curves.easeOutCubic,
+    );
 
     _heroController.forward();
     Future.delayed(
-        const Duration(milliseconds: 300), () => _cardController.forward());
-    
+      const Duration(milliseconds: 300),
+      () => _cardController.forward(),
+    );
+
     _loadLeaveData();
   }
 
@@ -90,24 +116,33 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
     });
 
     try {
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-      
-      setState(() {
-        _leaveData = LeaveData(
-          facultyName: 'Dr. Sarah Johnson',
-          casualLeave: 12,
-          medicalLeave: 15,
-          earnedLeave: 30,
-          compensationLeave: 5,
-          summerVacation: 60,
-          winterVacation: 15,
-          specialLeave: 2,
-          usedEarnedLeaves: 8,
-          remark: 'Regular annual allocation',
-        );
-        _isLoading = false;
-      });
+      final apiList = await ApiServices.getFacultyCancelledLeave(
+        uid: widget.uid,
+        token: widget.token,
+      );
+      if (apiList.isNotEmpty) {
+        final leave = apiList.first;
+        setState(() {
+          _leaveData = LeaveData(
+            facultyName: leave.name,
+            casualLeave: parseInt(leave.casualLeave),
+            medicalLeave: parseInt(leave.medicalLeave),
+            earnedLeave: parseInt(leave.earnedLeave),
+            compensationLeave: parseInt(leave.compensationLeave),
+            summerVacation: parseInt(leave.summerVacation),
+            winterVacation: parseInt(leave.winterVacation),
+            specialLeave: parseInt(leave.specialLeave),
+            usedEarnedLeaves: leave.usedEarnedLeaves,
+            remark: leave.remark ?? '',
+          );
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _leaveData = null;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       setState(() {
         _hasError = true;
@@ -210,9 +245,13 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
         backgroundColor: AppColors.accent,
         elevation: 8,
         icon: const Icon(Icons.add, color: Colors.white),
-        label: Text('Apply Leave',
-            style: GoogleFonts.inter(
-                fontWeight: FontWeight.w600, color: Colors.white)),
+        label: Text(
+          'Apply Leave',
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
       ),
     );
   }
@@ -244,35 +283,59 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
   }
 
   Widget _buildQuickStatsCard(LeaveData leaveData) {
-    final totalAvailable = leaveData.casualLeave +
+    final totalAvailable =
+        leaveData.casualLeave +
         leaveData.medicalLeave +
         leaveData.earnedLeave +
         leaveData.compensationLeave +
         leaveData.summerVacation +
         leaveData.winterVacation +
         leaveData.specialLeave;
+    final usedEarnedLeavesNum =
+        num.tryParse(leaveData.usedEarnedLeaves.toString()) ?? 0;
+    final earnedLeaveNum = num.tryParse(leaveData.earnedLeave.toString()) ?? 1;
     final utilizationRate =
-        (leaveData.usedEarnedLeaves / leaveData.earnedLeave * 100).round();
+        (earnedLeaveNum != 0 ? (usedEarnedLeavesNum / earnedLeaveNum * 100) : 0)
+            .round();
 
     return Row(
       children: [
         Expanded(
-            child: _buildQuickStatItem("Available", "$totalAvailable",
-                AppColors.success, Icons.check_circle_outline)),
+          child: _buildQuickStatItem(
+            "Available",
+            "$totalAvailable",
+            AppColors.success,
+            Icons.check_circle_outline,
+          ),
+        ),
         const SizedBox(width: 12),
         Expanded(
-            child: _buildQuickStatItem("Used", "${leaveData.usedEarnedLeaves}",
-                AppColors.warning, Icons.schedule)),
+          child: _buildQuickStatItem(
+            "Used",
+            "${leaveData.usedEarnedLeaves}",
+            AppColors.warning,
+            Icons.schedule,
+          ),
+        ),
         const SizedBox(width: 12),
         Expanded(
-            child: _buildQuickStatItem("Rate", "$utilizationRate%",
-                AppColors.info, Icons.trending_up)),
+          child: _buildQuickStatItem(
+            "Rate",
+            "$utilizationRate%",
+            AppColors.info,
+            Icons.trending_up,
+          ),
+        ),
       ],
     );
   }
 
   Widget _buildQuickStatItem(
-      String label, String value, Color color, IconData icon) {
+    String label,
+    String value,
+    Color color,
+    IconData icon,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -280,9 +343,10 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-              color: color.withOpacity(0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 8))
+            color: color.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
         ],
         border: Border.all(color: color.withOpacity(0.1)),
       ),
@@ -291,19 +355,28 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10)),
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
             child: Icon(icon, color: color, size: 20),
           ),
           const SizedBox(height: 8),
-          Text(value,
-              style: GoogleFonts.poppins(
-                  fontSize: 18, fontWeight: FontWeight.w700, color: color)),
-          Text(label,
-              style: GoogleFonts.inter(
-                  fontSize: 11,
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w500)),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );
@@ -313,15 +386,17 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-            colors: [Colors.white, Colors.grey.shade50],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight),
+          colors: [Colors.white, Colors.grey.shade50],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-              color: AppColors.primary.withOpacity(0.1),
-              blurRadius: 30,
-              offset: const Offset(0, 10))
+            color: AppColors.primary.withOpacity(0.1),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+          ),
         ],
       ),
       child: Padding(
@@ -332,7 +407,8 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                    colors: [AppColors.primary, AppColors.accent]),
+                  colors: [AppColors.primary, AppColors.accent],
+                ),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: CircleAvatar(
@@ -345,9 +421,10 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
                       .take(2)
                       .join(),
                   style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                  ),
                 ),
               ),
             ),
@@ -356,23 +433,32 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(leaveData.facultyName,
-                      style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary)),
+                  Text(
+                    leaveData.facultyName,
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                        color: AppColors.success.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12)),
-                    child: Text('Active Faculty',
-                        style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.success)),
+                      color: AppColors.success.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Active Faculty',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.success,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -380,10 +466,14 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12)),
-              child:
-                  Icon(Icons.person_outline, color: AppColors.accent, size: 24),
+                color: AppColors.accent.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.person_outline,
+                color: AppColors.accent,
+                size: 24,
+              ),
             ),
           ],
         ),
@@ -393,36 +483,75 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
 
   Widget _buildLeaveGrid(LeaveData leaveData) {
     final leaveItems = [
-      _LeaveItem('Casual Leave', leaveData.casualLeave, 12,
-          Icons.person_outline, AppColors.info),
-      _LeaveItem('Medical Leave', leaveData.medicalLeave, 15,
-          Icons.medical_services_outlined, AppColors.error),
-      _LeaveItem('Earned Leave', leaveData.earnedLeave, 30, Icons.star_outline,
-          AppColors.warning),
-      _LeaveItem('Compensation Leave', leaveData.compensationLeave, 10,
-          Icons.balance_outlined, AppColors.accent),
-      _LeaveItem('Summer Vacation', leaveData.summerVacation, 60,
-          Icons.wb_sunny_outlined, AppColors.vacation),
-      _LeaveItem('Winter Vacation', leaveData.winterVacation, 15,
-          Icons.ac_unit_outlined, AppColors.info),
-      _LeaveItem('Special Leave', leaveData.specialLeave, 5,
-          Icons.card_giftcard_outlined, AppColors.special),
       _LeaveItem(
-          'Used Earned Leaves',
-          leaveData.usedEarnedLeaves,
-          leaveData.earnedLeave,
-          Icons.assignment_turned_in_outlined,
-          AppColors.secondary),
+        'Casual Leave',
+        int.tryParse(leaveData.casualLeave.toString()) ?? 0,
+        12,
+        Icons.person_outline,
+        AppColors.info,
+      ),
+      _LeaveItem(
+        'Medical Leave',
+        int.tryParse(leaveData.medicalLeave.toString()) ?? 0,
+        15,
+        Icons.medical_services_outlined,
+        AppColors.error,
+      ),
+      _LeaveItem(
+        'Earned Leave',
+        int.tryParse(leaveData.earnedLeave.toString()) ?? 0,
+        30,
+        Icons.star_outline,
+        AppColors.warning,
+      ),
+      _LeaveItem(
+        'Compensation Leave',
+        int.tryParse(leaveData.compensationLeave.toString()) ?? 0,
+        10,
+        Icons.balance_outlined,
+        AppColors.accent,
+      ),
+      _LeaveItem(
+        'Summer Vacation',
+        int.tryParse(leaveData.summerVacation.toString()) ?? 0,
+        60,
+        Icons.wb_sunny_outlined,
+        AppColors.vacation,
+      ),
+      _LeaveItem(
+        'Winter Vacation',
+        int.tryParse(leaveData.winterVacation.toString()) ?? 0,
+        15,
+        Icons.ac_unit_outlined,
+        AppColors.info,
+      ),
+      _LeaveItem(
+        'Special Leave',
+        int.tryParse(leaveData.specialLeave.toString()) ?? 0,
+        5,
+        Icons.card_giftcard_outlined,
+        AppColors.special,
+      ),
+      _LeaveItem(
+        'Used Earned Leaves',
+        int.tryParse(leaveData.usedEarnedLeaves.toString()) ?? 0,
+        int.tryParse(leaveData.earnedLeave.toString()) ?? 0,
+        Icons.assignment_turned_in_outlined,
+        AppColors.secondary,
+      ),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Leave Categories',
-            style: GoogleFonts.poppins(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary)),
+        Text(
+          'Leave Categories',
+          style: GoogleFonts.poppins(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textPrimary,
+          ),
+        ),
         const SizedBox(height: 16),
         GridView.builder(
           shrinkWrap: true,
@@ -456,9 +585,10 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                  color: item.color.withOpacity(0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8))
+                color: item.color.withOpacity(0.1),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
             ],
           ),
           child: Padding(
@@ -471,29 +601,37 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [
-                          item.color.withOpacity(0.1),
-                          item.color.withOpacity(0.05)
-                        ]),
+                        gradient: LinearGradient(
+                          colors: [
+                            item.color.withOpacity(0.1),
+                            item.color.withOpacity(0.05),
+                          ],
+                        ),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(item.icon, color: item.color, size: 20),
                     ),
                     const Spacer(),
-                    Text('${item.count}',
-                        style: GoogleFonts.poppins(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
-                            color: item.color)),
+                    Text(
+                      '${item.count}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: item.color,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                Text(item.title,
-                    style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary),
-                    maxLines: 2),
+                Text(
+                  item.title,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                  maxLines: 2,
+                ),
                 const SizedBox(height: 8),
                 TweenAnimationBuilder<double>(
                   duration: Duration(milliseconds: 1200 + (index * 200)),
@@ -507,9 +645,13 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
                         minHeight: 4,
                       ),
                       const SizedBox(height: 4),
-                      Text('${(progressAnimation * 100).round()}% utilized',
-                          style: GoogleFonts.inter(
-                              fontSize: 10, color: AppColors.textSecondary)),
+                      Text(
+                        '${(progressAnimation * 100).round()}% utilized',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -526,9 +668,10 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-            colors: [AppColors.primary.withOpacity(0.05), Colors.white],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight),
+          colors: [AppColors.primary.withOpacity(0.05), Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: AppColors.primary.withOpacity(0.1)),
       ),
@@ -540,60 +683,59 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10)),
-                child: Icon(Icons.analytics_outlined,
-                    color: AppColors.primary, size: 20),
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.analytics_outlined,
+                  color: AppColors.primary,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
-              Text('Leave Analytics',
-                  style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary)),
+              Text(
+                'Leave Analytics',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 20),
-          Center(
-            child: TweenAnimationBuilder<double>(
-              duration: const Duration(milliseconds: 2000),
-              tween: Tween(
-                  begin: 0.0,
-                  end: leaveData.usedEarnedLeaves / leaveData.earnedLeave),
-              builder: (context, value, child) => SizedBox(
-                width: 120,
-                height: 120,
-                child: Stack(
-                  children: [
-                    CircularProgressIndicator(
-                      value: value,
-                      strokeWidth: 8,
-                      backgroundColor: AppColors.primary.withOpacity(0.1),
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(AppColors.primary),
-                    ),
-                    Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text('${(value * 100).round()}%',
-                              style: GoogleFonts.poppins(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primary)),
-                          Text('Used',
-                              style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+          PieChart(
+            dataMap: {
+              "Casual": leaveData.casualLeave.toDouble(),
+              "Medical": leaveData.medicalLeave.toDouble(),
+              "Earned": leaveData.earnedLeave.toDouble(),
+              "Compensation": leaveData.compensationLeave.toDouble(),
+              "Summer": leaveData.summerVacation.toDouble(),
+              "Winter": leaveData.winterVacation.toDouble(),
+              "Special": leaveData.specialLeave.toDouble(),
+            },
+            colorList: [
+              AppColors.info,
+              AppColors.error,
+              AppColors.warning,
+              AppColors.accent,
+              AppColors.vacation,
+              AppColors.secondary,
+              AppColors.special,
+            ],
+            chartRadius: 120,
+            chartType: ChartType.disc,
+            legendOptions: const LegendOptions(
+              showLegends: true,
+              legendPosition: LegendPosition.right,
+            ),
+            chartValuesOptions: const ChartValuesOptions(
+              showChartValuesInPercentage: true,
+              showChartValues: true,
             ),
           ),
-          if (leaveData.remark.isNotEmpty) ...[
+          if (leaveData.remark != null &&
+              leaveData.remark?.isNotEmpty == true) ...[
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(16),
@@ -610,14 +752,21 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Note',
-                            style: GoogleFonts.inter(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.info)),
-                        Text(leaveData.remark,
-                            style: GoogleFonts.inter(
-                                fontSize: 14, color: AppColors.textPrimary)),
+                        Text(
+                          'Note',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.info,
+                          ),
+                        ),
+                        Text(
+                          leaveData.remark ?? '',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -633,24 +782,25 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
   Widget _buildShimmerLoading() {
     return Column(
       children: List.generate(
-          6,
-          (index) => Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                height: 80,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.grey.shade300,
-                      Colors.grey.shade100,
-                      Colors.grey.shade300
-                    ],
-                    stops: const [0.0, 0.5, 1.0],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-              )),
+        6,
+        (index) => Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          height: 80,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              colors: [
+                Colors.grey.shade300,
+                Colors.grey.shade100,
+                Colors.grey.shade300,
+              ],
+              stops: const [0.0, 0.5, 1.0],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -662,28 +812,37 @@ class _PendingLeaveScreenState extends State<PendingLeaveScreen>
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-                color: AppColors.error.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20)),
+              color: AppColors.error.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
             child: Icon(Icons.error_outline, size: 48, color: AppColors.error),
           ),
           const SizedBox(height: 16),
-          Text('Unable to load leave data',
-              style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.textSecondary)),
+          Text(
+            'Unable to load leave data',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+            ),
+          ),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: _refreshData,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
-            child: Text('Retry',
-                style: GoogleFonts.inter(
-                    fontWeight: FontWeight.w600, color: Colors.white)),
+            child: Text(
+              'Retry',
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
           ),
         ],
       ),
@@ -714,4 +873,78 @@ class PatternPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => false;
+}
+
+class CancelledLeavesScreen extends StatefulWidget {
+  final String uid;
+  final String token;
+
+  const CancelledLeavesScreen({
+    Key? key,
+    required this.uid,
+    required this.token,
+  }) : super(key: key);
+
+  @override
+  State<CancelledLeavesScreen> createState() => _CancelledLeavesScreenState();
+}
+
+class _CancelledLeavesScreenState extends State<CancelledLeavesScreen> {
+  late Future<List<CancelledLeaveResponse>> _cancelledLeavesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _cancelledLeavesFuture = ApiServices.getFacultyCancelledLeave(
+      uid: widget.uid,
+      token: widget.token,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Cancelled Leaves')),
+      body: FutureBuilder<List<CancelledLeaveResponse>>(
+        future: _cancelledLeavesFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No cancelled leaves found.'));
+          }
+          final leaves = snapshot.data!;
+          return ListView.builder(
+            itemCount: leaves.length,
+            itemBuilder: (context, index) {
+              final leave = leaves[index];
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: ListTile(
+                  title: Text(leave.name),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Casual Leave: ${leave.casualLeave}'),
+                      Text('Earned Leave: ${leave.earnedLeave}'),
+                      Text('Special Leave: ${leave.specialLeave}'),
+                      Text('Summer Vacation: ${leave.summerVacation}'),
+                      Text('Winter Vacation: ${leave.winterVacation}'),
+                      Text('Compensation Leave: ${leave.compensationLeave}'),
+                      Text('Medical Leave: ${leave.medicalLeave}'),
+                      Text('Maternity Leave: ${leave.maternityLeave}'),
+                      Text('Used Earned Leaves: ${leave.usedEarnedLeaves}'),
+                      if (leave.remark != null) Text('Remark: ${leave.remark}'),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
 }

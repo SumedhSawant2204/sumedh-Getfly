@@ -15,6 +15,7 @@ import '../screens/payslip_screen.dart';
 import '../screens/leave_history.dart';
 import '../screens/cancelled_leaves.dart';
 import '../screens/manage_classroom_screen.dart';
+import '../services/api_services.dart';
 
 class SideDrawer extends StatelessWidget {
   const SideDrawer({super.key});
@@ -144,7 +145,12 @@ class SideDrawer extends StatelessWidget {
                           onTap: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const LeaveHistoryScreen()),
+                              MaterialPageRoute(
+                                builder: (_) => LeaveHistoryScreen(
+                                  uid: "195",           // <-- replace with actual user id
+                                  token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjMyMDMsInVzZXJfdHlwZSI6MiwicHJpdmlsZWdlIjpudWxsLCJpYXQiOjE3NDk2MzA3MzcsImV4cCI6MTc4MTE2NjczN30.V4okpSzbqNTeFklZljZEiHDZMa2fTH_YKvQJ7uve3NM",           // <-- replace with actual token
+                                ),
+                              ),
                             );
                           },
                         ),
@@ -155,7 +161,12 @@ class SideDrawer extends StatelessWidget {
                           onTap: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const PendingLeaveScreen()),
+                              MaterialPageRoute(
+                                builder: (_) => PendingLeaveScreen(
+                                  uid: "195", // <-- replace with actual user id
+                                  token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjMyMDMsInVzZXJfdHlwZSI6MiwicHJpdmlsZWdlIjpudWxsLCJpYXQiOjE3NDk2MzA3MzcsImV4cCI6MTc4MTE2NjczN30.V4okpSzbqNTeFklZljZEiHDZMa2fTH_YKvQJ7uve3NM", // <-- replace with actual token
+                                ),
+                              ),
                             );
                           },
                         ),
@@ -178,7 +189,12 @@ class SideDrawer extends StatelessWidget {
                           onTap: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const AlternateApprovalScreen()),
+                              MaterialPageRoute(
+                                builder: (_) => AlternateApprovalScreen(
+                                  uid: "195", // <-- replace with actual user id
+                                  token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjMyMDMsInVzZXJfdHlwZSI6MiwicHJpdmlsZWdlIjpudWxsLCJpYXQiOjE3NDk2MzA3MzcsImV4cCI6MTc4MTE2NjczN30.V4okpSzbqNTeFklZljZEiHDZMa2fTH_YKvQJ7uve3NM", // <-- replace with actual token
+                                ),
+                              ),
                             );
                           },
                         ),

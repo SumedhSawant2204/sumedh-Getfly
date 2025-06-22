@@ -1,13 +1,13 @@
 // apply_leave_screen.dart
 import 'package:flutter/material.dart';
-import '../models/faculty.dart' hide LeaveType;
+import 'package:intl/intl.dart';
+import '../services/api_services.dart' hide AlternatePerson;
 import '../widgets/app_header.dart';
 import '../widgets/side_drawer.dart';
-import '../services/api_services.dart';
-import '../models/faculty.dart' hide LeaveType;
-import 'package:intl/intl.dart';
+import '../services/api_services.dart' as api_services;
+import '../models/applyLeaveModel.dart';
 import '../models/leave_type.dart';
-import '../models/alternate_models.dart' hide AlternatePerson; // Make sure this file exports AlternatePerson
+import '../models/alternate_models.dart';
 
 class ApplyLeaveScreen extends StatefulWidget {
   const ApplyLeaveScreen({super.key});
@@ -17,9 +17,8 @@ class ApplyLeaveScreen extends StatefulWidget {
 }
 
 class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
-  final String apiToken =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjMyMDMsInVzZXJfdHlwZSI6MiwicHJpdmlsZWdlIjpudWxsLCJpYXQiOjE3NDk2MzA3MzcsImV4cCI6MTc4MTE2NjczN30.V4okpSzbqNTeFklZljZEiHDZMa2fTH_YKvQJ7uve3NM';
-  final String userId = '3203'; // Replace with actual user id if available
+  final String apiToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjMyMDMsInVzZXJfdHlwZSI6MiwicHJpdmlsZWdlIjpudWxsLCJpYXQiOjE3NDk2MzA3MzcsImV4cCI6MTc4MTE2NjczN30.V4okpSzbqNTeFklZljZEiHDZMa2fTH_YKvQJ7uve3NM';
+  final int uid = 195; // Use int for uid
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final _formKey = GlobalKey<FormState>();
@@ -27,8 +26,8 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
 
   List<LeaveType> leaveTypes = [];
   bool isLoadingLeaveTypes = true;
-  String? selectedLeaveType;
-  String? selectedAlternate;
+  int? selectedLeaveType;
+  int? selectedAlternate;
   DateTime? fromDate;
   DateTime? toDate;
   String? fileName;
@@ -36,6 +35,8 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
 
   List<AlternatePerson> alternates = [];
   bool isLoadingAlternates = true;
+
+  String? selectedHalfFullDay;
 
   @override
   void initState() {
@@ -74,9 +75,14 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
       isLoadingAlternates = true;
     });
     try {
-      List<AlternatePerson> fetchedAlternates = await ApiServices.getAlternates(token: apiToken);
+      List<api_services.AlternatePerson> fetchedAlternates = await api_services.ApiServices.getAlternates(token: apiToken);
       setState(() {
-        alternates = fetchedAlternates;
+        alternates = fetchedAlternates
+            .map((alt) => AlternatePerson(
+                  facultyId: alt.facultyId,
+                  name: alt.name,
+                ))
+            .toList();
         isLoadingAlternates = false;
       });
     } catch (e) {
@@ -123,7 +129,6 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
       setState(() {
         if (isFrom) {
           fromDate = pickedDate;
-          // Clear toDate if it's before the new fromDate
           if (toDate != null && toDate!.isBefore(pickedDate)) {
             toDate = null;
           }
@@ -135,7 +140,6 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
   }
 
   void _pickFile() {
-    // Simulate file picking - in real app, use file_picker package
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -233,10 +237,8 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
           child: Text(type.lname),
         );
       }).toList(),
-      value: selectedLeaveType == null
-          ? null
-          : int.tryParse(selectedLeaveType!),
-      onChanged: (val) => setState(() => selectedLeaveType = val?.toString()),
+      value: selectedLeaveType,
+      onChanged: (val) => setState(() => selectedLeaveType = val),
       validator: (val) => val == null ? 'Please select a leave type' : null,
     );
   }
@@ -256,9 +258,27 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
           child: Text(alt.name),
         );
       }).toList(),
-      value: selectedAlternate == null ? null : int.tryParse(selectedAlternate!),
-      onChanged: (val) => setState(() => selectedAlternate = val?.toString()),
-      validator: (val) => val == null ? 'Please select an alternate faculty' : null,
+      value: selectedAlternate,
+      onChanged: (val) => setState(() => selectedAlternate = val),
+      validator: (val) =>
+          val == null ? 'Please select an alternate faculty' : null,
+    );
+  }
+
+  Widget _buildHalfFullDayDropdown() {
+    return DropdownButtonFormField<String>(
+      decoration: const InputDecoration(
+        labelText: 'Half/Full Day',
+        prefixIcon: Icon(Icons.timelapse),
+      ),
+      items: const [
+        DropdownMenuItem(value: 'full_day', child: Text('Full Day')),
+        DropdownMenuItem(value: 'first_half', child: Text('First Half')),
+        DropdownMenuItem(value: 'second_half', child: Text('Second Half')),
+      ],
+      value: selectedHalfFullDay,
+      onChanged: (val) => setState(() => selectedHalfFullDay = val),
+      validator: (val) => val == null ? 'Please select half/full day' : null,
     );
   }
 
@@ -433,6 +453,13 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                     child: _buildAlternateDropdown(),
                   ),
 
+                  // Half/Full Day Section
+                  _buildSectionCard(
+                    title: 'Half/Full Day',
+                    icon: Icons.timelapse,
+                    child: _buildHalfFullDayDropdown(),
+                  ),
+
                   // Reason Section
                   _buildSectionCard(
                     title: 'Reason for Leave',
@@ -546,47 +573,50 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                                 setState(() => isSubmitting = true);
 
                                 try {
-                                  // Use the provided token and userId directly
-                                  String token = apiToken;
-                                  String uid = userId;
-
                                   final now = DateTime.now();
-                                  final appliedDate = DateFormat(
-                                    'yyyy-MM-dd',
-                                  ).format(now);
+                                  final appliedDate = DateFormat('yyyy-MM-dd').format(now);
                                   final fromDateStr = fromDate != null
-                                      ? DateFormat(
-                                          'yyyy-MM-dd',
-                                        ).format(fromDate!)
+                                      ? DateFormat('yyyy-MM-dd').format(fromDate!)
                                       : '';
                                   final toDateStr = toDate != null
                                       ? DateFormat('yyyy-MM-dd').format(toDate!)
                                       : '';
 
                                   final request = ApplyLeaveRequest(
-                                    leaveId: selectedLeaveType ?? '',
+                                    leaveId: (selectedLeaveType ?? 0).toString(),
                                     fromDate: fromDateStr,
                                     toDate: toDateStr,
                                     appliedDate: appliedDate,
                                     reason: _reasonController.text.trim(),
                                     noOfDate: toDate != null && fromDate != null
-                                        ? toDate!.difference(fromDate!).inDays +
-                                              1
-                                        : 0,
-                                    alternate: selectedAlternate ?? '',
-                                    uid: uid,
+                                        ? (toDate!.difference(fromDate!).inDays + 1).toDouble()
+                                        : 0.0,
+                                    alternate: (selectedAlternate ?? 0).toString(),
+                                    uid: uid.toString(),
                                     doc: fileName ?? '',
-                                    halfFullDay: '', // Adjust if needed
+                                    halfFullDay: selectedHalfFullDay ?? '',
                                   );
 
-                                  final response = await ApiServices.applyLeave(
+                                  await ApiServices.applyLeave(
                                     request: request,
-                                    token: token,
+                                    token: apiToken,
                                   );
 
-                                  // ...handle response...
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Leave request submitted successfully!',
+                                      ),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
                                 } catch (e) {
-                                  // ...handle error...
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Failed to submit leave: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
                                 } finally {
                                   setState(() => isSubmitting = false);
                                 }
@@ -616,5 +646,3 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
     );
   }
 }
-
-/* AlternatePerson class removed; now imported from ../models/alternate_models.dart */

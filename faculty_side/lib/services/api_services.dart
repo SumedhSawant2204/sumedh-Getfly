@@ -1,13 +1,21 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:faculty_side/models/leave_history_model.dart'
+    show LeaveHistoryResponse;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import '../models/faculty.dart' hide LeaveType;
+import '../models/faculty.dart'
+    hide LeaveType, CancelledLeaveResponse, FacultyDashboardResponse, LeaveCountResponse, ApplyLeaveResponse, ApplyLeaveRequest;
 import '../screens/apply_leave_screen.dart';
 import '../models/leave_type.dart';
 import '../models/alternate_models.dart';
-// Import AlternatePerson if needed
+import '../services/api_services.dart';
+import '../models/cancelled_leave_response.dart';
+import '../models/FacultyDashboardResponse.dart';
+import '../models/LeaveCountResponse.dart';
+import '../models/applyLeaveModel.dart';
+// import '../screens/apply_leave_screen.dart';
 
 class ApiServices {
   static const String baseUrl =
@@ -15,7 +23,8 @@ class ApiServices {
   static const String dashboardUrl =
       'https://api.test.vppcoe.getflytechnologies.com/';
 
-  static const String uid = '195'; // Example UID, replace as needed
+  static const String uid = '195';
+  static const String id = '20'; // Example UID, replace as needed
 
   /// 🔐 Static token for development (avoid in production)
   static const String staticToken =
@@ -35,7 +44,7 @@ class ApiServices {
       Uri.parse('${baseUrl}get_allowed_leaves?uid=$uid'),
       headers: _getHeaders(token: token),
     );
-    print('this is the response: ${response.body}');
+    // print('this is the response: ${response.body}');
     if (response.statusCode == 200) {
       final Map<String, dynamic> jsonBody = json.decode(response.body);
       final List<dynamic> data = jsonBody['leave_list'] ?? [];
@@ -94,19 +103,21 @@ class ApiServices {
   }
 
   /// 3.3 Get Leave Count by Leave Type
-  static Future<LeaveCountResponse> getLeaveCount({
-    required String id,
+  static Future<List<LeaveCountResponse>> getLeaveCount({
     required String uid,
     required String token,
   }) async {
     try {
       final response = await http.get(
-        Uri.parse('${baseUrl}getLeaveCount?id=$id&uid=$uid'),
+        Uri.parse('${baseUrl}dashboard?uid=$uid'),
         headers: _getHeaders(token: token),
       );
+      // print('this is the response: ${response.body}');
 
       if (response.statusCode == 200) {
-        return LeaveCountResponse.fromJson(json.decode(response.body));
+        final Map<String, dynamic> jsonBody = json.decode(response.body);
+        final List<dynamic> data = jsonBody['leave_list'] ?? [];
+        return data.map((item) => LeaveCountResponse.fromJson(item)).toList();
       } else {
         throw Exception('Failed to get leave count: ${response.statusCode}');
       }
@@ -163,6 +174,7 @@ class ApiServices {
         headers: _getHeaders(token: token),
         body: json.encode(request.toJson()),
       );
+      print('this is the response: ${response.body}');
 
       if (response.statusCode == 200) {
         return ApplyLeaveResponse.fromJson(json.decode(response.body));
@@ -177,7 +189,7 @@ class ApiServices {
   // LEAVE HISTORY SECTION
 
   /// 3.6 Get Leave History
-  static Future<LeaveHistoryResponse> getLeaveHistory({
+  static Future<List<LeaveHistoryResponse>> getLeaveHistory({
     required String uid,
     required String token,
   }) async {
@@ -186,9 +198,12 @@ class ApiServices {
         Uri.parse('${baseUrl}leave_hisotry?uid=$uid'),
         headers: _getHeaders(token: token),
       );
+      // print('this is the response: ${response.body}');
 
       if (response.statusCode == 200) {
-        return LeaveHistoryResponse.fromJson(json.decode(response.body));
+        final Map<String, dynamic> jsonBody = json.decode(response.body);
+        final List<dynamic> data = jsonBody['leave'] ?? [];
+        return data.map((item) => LeaveHistoryResponse.fromJson(item)).toList();
       } else {
         throw Exception('Failed to get leave history: ${response.statusCode}');
       }
@@ -198,24 +213,20 @@ class ApiServices {
   }
 
   /// 3.7 Cancel Leave
-  static Future<CancelLeaveResponse> cancelLeave({
-    required int id,
+  static Future<bool> cancelLeave({
+    required int leaveId,
     required String token,
   }) async {
-    try {
-      final response = await http.post(
-        Uri.parse('${baseUrl}cancel_leave'),
-        headers: _getHeaders(token: token),
-        body: json.encode({'id': id}),
-      );
-
-      if (response.statusCode == 200) {
-        return CancelLeaveResponse.fromJson(json.decode(response.body));
-      } else {
-        throw Exception('Failed to cancel leave: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error cancelling leave: $e');
+    final response = await http.post(
+      Uri.parse('${baseUrl}cancel_leave'),
+      headers: _getHeaders(token: token),
+      body: jsonEncode({'id': leaveId}),
+    );
+    if (response.statusCode == 200) {
+      // You can check response.body for success if needed
+      return true;
+    } else {
+      throw Exception('Failed to cancel leave: ${response.statusCode}');
     }
   }
 
@@ -248,7 +259,7 @@ class ApiServices {
   }
 
   /// 3.10 Get Faculty Cancelled Leave
-  static Future<CancelledLeaveResponse> getFacultyCancelledLeave({
+  static Future<List<CancelledLeaveResponse>> getFacultyCancelledLeave({
     required String uid,
     required String token,
   }) async {
@@ -257,9 +268,14 @@ class ApiServices {
         Uri.parse('${baseUrl}faculty_cancelled_leave?uid=$uid'),
         headers: _getHeaders(token: token),
       );
+      // print('this is the response: ${response.body}');
 
       if (response.statusCode == 200) {
-        return CancelledLeaveResponse.fromJson(json.decode(response.body));
+        final Map<String, dynamic> jsonBody = json.decode(response.body);
+        final List<dynamic> data = jsonBody['balanceLeave'] ?? [];
+        return data
+            .map((item) => CancelledLeaveResponse.fromJson(item))
+            .toList();
       } else {
         throw Exception(
           'Failed to get cancelled leaves: ${response.statusCode}',
@@ -273,18 +289,23 @@ class ApiServices {
   // ALTERNATE LEAVE APPROVAL SECTION
 
   /// 4.2 Get Faculty Dashboard
-  static Future<FacultyDashboardResponse> getFacultyDashboard({
+  static Future<List<FacultyDashboardResponse>> getFacultyDashboard({
     required String uid,
     required String token,
   }) async {
     try {
       final response = await http.get(
-        Uri.parse('${dashboardUrl}dashboard?uid=$uid'),
+        Uri.parse('${baseUrl}dashboard?uid=$uid'),
         headers: _getHeaders(token: token),
       );
+      // print('this is the response: ${response.body}');
 
       if (response.statusCode == 200) {
-        return FacultyDashboardResponse.fromJson(json.decode(response.body));
+        final Map<String, dynamic> jsonBody = json.decode(response.body);
+        final List<dynamic> data = jsonBody['alternate'] ?? [];
+        return data
+            .map((item) => FacultyDashboardResponse.fromJson(item))
+            .toList();
       } else {
         throw Exception(
           'Failed to get faculty dashboard: ${response.statusCode}',
@@ -477,12 +498,14 @@ class ApiServices {
     }
   }
 
-  static Future<List<AlternatePerson>> getAlternates({required String token}) async {
+  static Future<List<AlternatePerson>> getAlternates({
+    required String token,
+  }) async {
     final response = await http.get(
       Uri.parse('${baseUrl}get_allowed_leaves?uid=$uid'),
       headers: _getHeaders(token: token),
     );
-    print('response of alternates: ${response.body}');
+    // print('response of alternates: ${response.body}');
     if (response.statusCode == 200) {
       final Map<String, dynamic> jsonBody = json.decode(response.body);
       final List<dynamic> data = jsonBody['facultylist'] ?? [];
@@ -507,10 +530,15 @@ class AlternatePerson {
 class AlternateDropdownWidget extends StatefulWidget {
   final String apiToken;
   final BuildContext context;
-  const AlternateDropdownWidget({Key? key, required this.apiToken, required this.context}) : super(key: key);
+  const AlternateDropdownWidget({
+    Key? key,
+    required this.apiToken,
+    required this.context,
+  }) : super(key: key);
 
   @override
-  _AlternateDropdownWidgetState createState() => _AlternateDropdownWidgetState();
+  _AlternateDropdownWidgetState createState() =>
+      _AlternateDropdownWidgetState();
 }
 
 class _AlternateDropdownWidgetState extends State<AlternateDropdownWidget> {
@@ -529,7 +557,9 @@ class _AlternateDropdownWidgetState extends State<AlternateDropdownWidget> {
       isLoadingAlternates = true;
     });
     try {
-      List<AlternatePerson> fetchedAlternates = await ApiServices.getAlternates(token: widget.apiToken);
+      List<AlternatePerson> fetchedAlternates = await ApiServices.getAlternates(
+        token: widget.apiToken,
+      );
       setState(() {
         alternates = fetchedAlternates;
         isLoadingAlternates = false;
@@ -562,9 +592,12 @@ class _AlternateDropdownWidgetState extends State<AlternateDropdownWidget> {
           child: Text(alt.name),
         );
       }).toList(),
-      value: selectedAlternate == null ? null : int.tryParse(selectedAlternate!),
+      value: selectedAlternate == null
+          ? null
+          : int.tryParse(selectedAlternate!),
       onChanged: (val) => setState(() => selectedAlternate = val?.toString()),
-      validator: (val) => val == null ? 'Please select an alternate faculty' : null,
+      validator: (val) =>
+          val == null ? 'Please select an alternate faculty' : null,
     );
   }
 

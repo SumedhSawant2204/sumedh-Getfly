@@ -295,27 +295,7 @@ class ApplyLeaveResponse {
   }
 }
 
-class LeaveHistoryResponse {
-  final bool success;
-  final String message;
-  final List<LeaveRecord> data;
 
-  LeaveHistoryResponse({
-    required this.success,
-    required this.message,
-    required this.data,
-  });
-
-  factory LeaveHistoryResponse.fromJson(Map<String, dynamic> json) {
-    return LeaveHistoryResponse(
-      success: json['success'] ?? false,
-      message: json['message'] ?? '',
-      data: (json['data'] as List<dynamic>?)
-          ?.map((item) => LeaveRecord.fromJson(item))
-          .toList() ?? [],
-    );
-  }
-}
 
 class CancelLeaveResponse {
   final bool success;
